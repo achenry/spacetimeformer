@@ -47,3 +47,4 @@ checkpoints/
 
 .vscode
 *.csv
+.eggs/
