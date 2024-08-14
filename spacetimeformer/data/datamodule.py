@@ -3,7 +3,7 @@ import warnings
 import pytorch_lightning as pl
 import torch
 from torch.utils.data import DataLoader
-
+from pytorch_lightning.utilities import CombinedLoader
 
 class DataModule(pl.LightningDataModule):
     def __init__(
@@ -40,13 +40,31 @@ class DataModule(pl.LightningDataModule):
         if self.overfit:
             split = "train"
             shuffle = True
-        return DataLoader(
-            self.datasetCls(**self.dataset_kwargs, split=split),
-            shuffle=shuffle,
-            batch_size=self.batch_size,
-            num_workers=self.workers,
-            collate_fn=self.collate_fn,
-        )
+        if hasattr(self.dataset_kwargs["csv_time_series"].train_data, "__iter__"):
+            datasets = getattr(self.dataset_kwargs["csv_time_series"], f"{split}_data")
+            combined_loader = []
+            for d in range(len(datasets)):
+                ds_kwargs = dict(self.dataset_kwargs)
+                # getattr(self.dataset_kwargs["csv_time_series"], f"{split}_data") = ds
+                ds_kwargs["dataset_index"] = d
+                combined_loader.append(DataLoader(
+                    self.datasetCls(**ds_kwargs, split=split),
+                    shuffle=shuffle,
+                    batch_size=self.batch_size,
+                    num_workers=self.workers,
+                    collate_fn=self.collate_fn,
+                    persistent_workers=True
+                ))
+            return CombinedLoader(combined_loader, mode="max_size")
+        else:
+            return DataLoader(
+                self.datasetCls(**self.dataset_kwargs, split=split),
+                shuffle=shuffle,
+                batch_size=self.batch_size,
+                num_workers=self.workers,
+                collate_fn=self.collate_fn,
+                persistent_workers=True
+            )
 
     @classmethod
     def add_cli(self, parser):

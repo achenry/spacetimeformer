@@ -83,6 +83,7 @@ class Spacetimeformer_Forecaster(stf.Forecaster):
             use_seasonal_decomp=use_seasonal_decomp,
             linear_shared_weights=linear_shared_weights,
         )
+        self.losses = []
         self.spacetimeformer = stf.spacetimeformer_model.nn.Spacetimeformer(
             d_yc=d_yc,
             d_yt=d_yt,
@@ -204,6 +205,7 @@ class Spacetimeformer_Forecaster(stf.Forecaster):
             + self.recon_loss_imp * loss_dict["recon_loss"]
         )
         stats["acc"] = loss_dict["acc"]
+        self.losses.append(loss_dict) 
         return stats
 
     def classification_loss(
@@ -219,7 +221,9 @@ class Spacetimeformer_Forecaster(stf.Forecaster):
         acc = torchmetrics.functional.accuracy(
             torch.softmax(logits, dim=1),
             labels,
-        )
+            num_classes=logits.shape[1],
+            task="multiclass"
+        ) # TODO should this be multiclass
         return class_loss, acc
 
     def compute_loss(self, batch, time_mask=None, forward_kwargs={}):
@@ -295,22 +299,26 @@ class Spacetimeformer_Forecaster(stf.Forecaster):
             return forecast_output, recon_output, (logits, labels), attn
         return forecast_output, recon_output, (logits, labels)
 
-    def validation_epoch_end(self, outs):
+    def on_validation_epoch_end(self):
         total = 0
         count = 0
-        for dict_ in outs:
+        for dict_ in self.losses:
             if "forecast_loss" in dict_:
                 total += dict_["forecast_loss"].mean()
                 count += 1
+        # for dict_ in outputs:
+        #     if "forecast_loss" in dict_:
+        #         total += dict_["forecast_loss"].mean()
+        #         count += 1
         avg_val_loss = total / count
         # manually tell scheduler it's the end of an epoch to activate
         # ReduceOnPlateau functionality from a step-based scheduler
         self.scheduler.step(avg_val_loss, is_end_epoch=True)
 
-    def training_step_end(self, outs):
-        self._log_stats("train", outs)
+    def training_step_end(self, outputs):
+        self._log_stats("train", outputs)
         self.scheduler.step()
-        return {"loss": outs["loss"].mean()}
+        return {"loss": outputs["loss"].mean()}
 
     def configure_optimizers(self):
         self.optimizer = torch.optim.AdamW(
@@ -326,7 +334,8 @@ class Spacetimeformer_Forecaster(stf.Forecaster):
             patience=3,
             factor=self.decay_factor,
         )
-        return [self.optimizer], [self.scheduler]
+        # return [self.optimizer], [self.scheduler]
+        return {"optimizer": self.optimizer, "lr_scheduler": self.scheduler, "monitor": "val_loss"}
 
     @classmethod
     def add_cli(self, parser):

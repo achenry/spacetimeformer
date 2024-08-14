@@ -36,6 +36,9 @@ def time_features(
         main_df["Minute"] = dates.apply(
             lambda row: 2.0 * ((row.minute) / 59.0) - 1.0, 1
         )
-
+    if "second" in use_features:
+        main_df["Second"] = dates.apply(
+            lambda row: 2.0 * ((row.second + row.microsecond * 1e-6) / 59.0) - 1.0, 1
+        )
     main_df[time_col_name] = dates
     return main_df

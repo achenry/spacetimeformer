@@ -5,7 +5,7 @@ import torch
 import torch.nn.functional as F
 import pytorch_lightning as pl
 import numpy as np
-
+from collections import defaultdict
 import spacetimeformer as stf
 
 
@@ -250,15 +250,43 @@ class Forecaster(pl.LightningModule, ABC):
         return stats
 
     def training_step(self, batch, batch_idx):
-        return self.step(batch, train=True)
-
+        # run for all datasets
+        if type(batch) is list:
+            stats = defaultdict(int) # defaults to zero
+            for dataset_batch in batch:
+                dataset_stats = self.step(dataset_batch, train=True)
+                for k, v in dataset_stats.items():
+                    stats[k] += v
+        else:
+            stats = self.step(batch, train=True)
+        
+        return stats
+    
     def validation_step(self, batch, batch_idx):
-        stats = self.step(batch, train=False)
-        self.current_val_stats = stats
+        # run for all datasets
+        if type(batch) is list:
+            stats = defaultdict(int) # defaults to zero
+            for dataset_batch in batch:
+                dataset_stats = self.step(dataset_batch, train=False)
+                for k, v in dataset_stats.items():
+                    stats[k] += v
+            self.current_val_stats = stats
+        else:
+            stats = self.step(batch, train=False)
+            self.current_val_stats = stats
+        
         return stats
 
     def test_step(self, batch, batch_idx):
-        return self.step(batch, train=False)
+        # run for all datasets
+        if type(batch) is list:
+            stats = defaultdict(int) # defaults to zero
+            for dataset_batch in batch:
+                dataset_stats = self.step(dataset_batch, train=False)
+                for k, v in dataset_stats.items():
+                    stats[k] += v
+        else:
+            stats = self.step(batch, train=False)
 
     def _log_stats(self, section, outs):
         for key in outs.keys():
